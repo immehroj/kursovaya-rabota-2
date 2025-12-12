@@ -1,0 +1,97 @@
+SQL-скрипты создания хранилища данных телекоммуникационной компании
+1. SUBSCRIBER_DIM
+
+CREATE TABLE subscriber_dim (
+    subscriber_id BIGINT PRIMARY KEY,
+    full_name VARCHAR(255),
+    msisdn VARCHAR(20),
+    connected_date DATE,
+    status VARCHAR(50)
+);
+
+2. TARIFF_DIM
+CREATE TABLE tariff_dim (
+    tariff_id BIGINT PRIMARY KEY,
+    name VARCHAR(255),
+    price NUMERIC(10,2),
+    description TEXT
+);
+
+3. SERVICE_DIM
+CREATE TABLE service_dim (
+    service_id BIGINT PRIMARY KEY,
+    name VARCHAR(255),
+    type VARCHAR(100),
+    description TEXT
+);
+
+4. REGION_DIM
+CREATE TABLE region_dim (
+    region_id BIGINT PRIMARY KEY,
+    name VARCHAR(255),
+    city VARCHAR(255)
+);
+
+5. NETWORK_ELEMENT_DIM
+CREATE TABLE network_element_dim (
+    network_element_id BIGINT PRIMARY KEY,
+    name VARCHAR(255),
+    type VARCHAR(100),
+    region_id BIGINT REFERENCES region_dim(region_id)
+);
+
+6. TIME_DIM
+CREATE TABLE time_dim (
+    date DATE PRIMARY KEY,
+    hour INT,
+    day INT,
+    month INT,
+    quarter INT,
+    year INT
+);
+
+7. USAGE_FACT
+CREATE TABLE usage_fact (
+    usage_id BIGINT PRIMARY KEY,
+    subscriber_id BIGINT REFERENCES subscriber_dim(subscriber_id),
+    service_id BIGINT REFERENCES service_dim(service_id),
+    network_element_id BIGINT REFERENCES network_element_dim(network_element_id),
+    event_time DATE REFERENCES time_dim(date),
+    volume NUMERIC(12,3),
+    call_direction VARCHAR(20),
+    duration_seconds INT
+)
+PARTITION BY RANGE (event_time);
+
+8. CHARGE_FACT
+CREATE TABLE charge_fact (
+    charge_id BIGINT PRIMARY KEY,
+    subscriber_id BIGINT REFERENCES subscriber_dim(subscriber_id),
+    tariff_id BIGINT REFERENCES tariff_dim(tariff_id),
+    charge_date DATE REFERENCES time_dim(date),
+    amount NUMERIC(12,2),
+    charge_type VARCHAR(50)
+)
+PARTITION BY RANGE (charge_date);
+
+9. PAYMENT_FACT
+CREATE TABLE payment_fact (
+    payment_id BIGINT PRIMARY KEY,
+    subscriber_id BIGINT REFERENCES subscriber_dim(subscriber_id),
+    payment_date DATE REFERENCES time_dim(date),
+    amount NUMERIC(12,2),
+    payment_method VARCHAR(50)
+)
+PARTITION BY RANGE (payment_date);
+
+10. Индексы
+CREATE INDEX idx_usage_subscriber ON usage_fact(subscriber_id);
+CREATE INDEX idx_usage_service ON usage_fact(service_id);
+CREATE INDEX idx_usage_event_time ON usage_fact(event_time);
+
+CREATE INDEX idx_charge_subscriber ON charge_fact(subscriber_id);
+CREATE INDEX idx_charge_date ON charge_fact(charge_date);
+
+CREATE INDEX idx_payment_subscriber ON payment_fact(subscriber_id);
+CREATE INDEX idx_payment_date ON payment_fact(payment_date);
+
