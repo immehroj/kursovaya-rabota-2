@@ -1,4 +1,4 @@
-SQL-������� �������� ��������� ������ �������������������� ��������
+SQL-ñêðèïòû ñîçäàíèÿ õðàíèëèùà äàííûõ òåëåêîììóíèêàöèîííîé êîìïàíèè
 1. SUBSCRIBER_DIM
 
 CREATE TABLE subscriber_dim (
@@ -84,7 +84,7 @@ CREATE TABLE payment_fact (
 )
 PARTITION BY RANGE (payment_date);
 
-10. �������
+10. Èíäåêñû
 CREATE INDEX idx_usage_subscriber ON usage_fact(subscriber_id);
 CREATE INDEX idx_usage_service ON usage_fact(service_id);
 CREATE INDEX idx_usage_event_time ON usage_fact(event_time);
@@ -94,4 +94,89 @@ CREATE INDEX idx_charge_date ON charge_fact(charge_date);
 
 CREATE INDEX idx_payment_subscriber ON payment_fact(subscriber_id);
 CREATE INDEX idx_payment_date ON payment_fact(payment_date);
+
+|-------------------------------------------------------------------------------------------------------------------------------|
+
+
+Первым примером является выборка объёма трафика по абонентам за выбранный период времени. Запрос использует таблицу фактов USAGE_FACT и соответствующие измерения, выполняя фильтрацию по дате и агрегирование объёма переданных данных. Такая аналитика применяется для расчёта нагрузок на сеть и мониторинга активности абонентов.
+
+SELECT 
+    u.subscriber_id,
+    s.full_name,
+    SUM(u.volume) AS total_volume
+FROM USAGE_FACT u
+JOIN SUBSCRIBER_DIM s ON u.subscriber_id = s.subscriber_id
+JOIN TIME_DIM t ON u.event_time = t.date
+WHERE t.year = 2024 AND t.month = 10
+GROUP BY u.subscriber_id, s.full_name
+ORDER BY total_volume DESC;
+
+
+Следующий пример иллюстрирует анализ начислений по тарифам. Запрос использует таблицу CHARGE_FACT и измерение тарифов, агрегируя суммы начислений для определения наиболее доходных тарифных планов. Этот тип отчёта важен для оценки финансовой эффективности и оптимизации тарифной сетки.
+
+SELECT
+    c.tariff_id,
+    t.name AS tariff_name,
+    SUM(c.amount) AS total_revenue
+FROM CHARGE_FACT c
+JOIN TARIFF_DIM t ON c.tariff_id = t.tariff_id
+JOIN TIME_DIM td ON c.charge_date = td.date
+WHERE td.year = 2024
+GROUP BY c.tariff_id, t.name
+ORDER BY total_revenue DESC;
+
+
+Для анализа финансовой активности абонентов также может использоваться отчёт о соотношении начислений и платежей. Запрос соединяет факты начислений и платежей по абоненту, что позволяет выявить задолженности и оценить платёжную дисциплину.
+
+SELECT 
+    s.subscriber_id,
+    s.full_name,
+    COALESCE(SUM(c.amount), 0) AS total_charges,
+    COALESCE(SUM(p.amount), 0) AS total_payments,
+    COALESCE(SUM(p.amount), 0) - COALESCE(SUM(c.amount), 0) AS balance
+FROM SUBSCRIBER_DIM s
+LEFT JOIN CHARGE_FACT c ON s.subscriber_id = c.subscriber_id
+LEFT JOIN PAYMENT_FACT p ON s.subscriber_id = p.subscriber_id
+GROUP BY s.subscriber_id, s.full_name
+ORDER BY balance ASC;
+
+
+Также часто требуется получить распределение нагрузки по сетевым элементам. Такой запрос помогает определить перегруженные участки сети и планировать модернизацию инфраструктуры.
+
+SELECT
+    ne.name AS network_element,
+    SUM(u.volume) AS traffic_volume,
+    COUNT(*) AS event_count
+FROM USAGE_FACT u
+JOIN NETWORK_ELEMENT_DIM ne 
+    ON u.network_element_id = ne.network_element_id
+JOIN TIME_DIM t 
+    ON u.event_time = t.date
+WHERE t.year = 2024 AND t.month BETWEEN 1 AND 3
+GROUP BY ne.name
+ORDER BY traffic_volume DESC;
+
+
+Более сложный аналитический запрос может включать использование вложенных подзапросов и оконных функций. Ниже приведён пример расчёта среднего объёма трафика на абонента и одновременно определение его относительного положения среди всех абонентов (ранжирование).
+
+SELECT
+    subscriber_id,
+    full_name,
+    total_volume,
+    AVG(total_volume) OVER () AS avg_volume,
+    RANK() OVER (ORDER BY total_volume DESC) AS volume_rank
+FROM (
+    SELECT 
+        u.subscriber_id,
+        s.full_name,
+        SUM(u.volume) AS total_volume
+    FROM USAGE_FACT u
+    JOIN SUBSCRIBER_DIM s 
+        ON u.subscriber_id = s.subscriber_id
+    GROUP BY u.subscriber_id, s.full_name
+) t
+ORDER BY volume_rank;
+
+
+Эти примеры демонстрируют, как на основе разработанного хранилища можно выполнять широкий спектр аналитических запросов — от простых выборок до комплексной многомерной аналитики.
 
